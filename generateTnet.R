@@ -1,55 +1,37 @@
-generateTnet <- function(mdatalist = NULL, mdata_suffix = NULL, arrowRelThick = c(100, 100), dirsave, prefix = NULL, suffix = NULL){
-  #Create transomics network ("tnet") data file and summary graphs from Perseus matrix data.
-  #arrowRelThick: Zoom up or down (%) the arrows in diagrams.
-
+generateTnet <- function(mdata_suffix, arrowRelThick = c(100, 100), dirsave, prefix = NULL, suffix = NULL, settings){
+  #Generate trans-omics network ("tnet") using multi-omic datasets retained in matrixData objects within PerseusR.
+  #arrowRelThick: To scale up or down the thicknesses of arrows from the default setting (100%) in the original and simplified diagrams, respectively.
+  
   library(dplyr)
   library(tidyr)
   library(PerseusR)
   library(grid)
   library(openxlsx)
   
-  fontfamily <- "Arial"
-  
-  mainFun <- function(mdatalist, mdata_suffix, arrowRelThick, dirsave, prefix, suffix){
-    #settings
-    dataTypes <- c("phosphoproteome", "transcriptome", "proteome", "metabolome")
-    annotCol_names_list <- list()
-    annotCol_names_list[[1]] <- c(phosphoproteome = "Protein_AApos",
-                                  transcriptome = "Symbol",
-                                  proteome = "Majority.protein.IDs",
-                                  metabolome = "Compound.Name")
-    annotCol_names_list[[2]] <- c(phosphoproteome = "Symbol",
-                                  transcriptome = "EnsemblGeneId",
-                                  proteome = "Symbol",
-                                  metabolome = "KeggCpdId")
-    sepGenes_vec_list <- list()
-    sepGenes_vec_list[[1]] <- c(phosphoproteome = FALSE,
-                                transcriptome = FALSE,
-                                proteome = FALSE,
-                                metabolome = FALSE)
-    sepGenes_vec_list[[2]] <- c(phosphoproteome = TRUE,
-                                transcriptome = TRUE,
-                                proteome = TRUE,
-                                metabolome = FALSE)
+  mainFun <- function(mdatalist, mdata_suffix, arrowRelThick, dirsave, prefix, suffix, settings){
+    #Settings
+    dataTypes <- settings[["dataTypes"]]
+    annotCol_names_list <- settings[["annotCol_names_list"]]
+    sepGenes_vec_list <- settings[["sepGenes_vec_list"]]
     annotCol_names_tnet <- c(annotCol_names_list[[1]], 
                              phosphoproteome_protein = "Proteins")
-    #Specify data column, limit (narrow-down) column, and key column (to match data to another) for each start/end node.
     keycols_tnet<- c(ph1st = "NKINparent_desc", tr3st = "TF", tr4st = "miRNAname", pr5st = "miRNAname", 
                      tr6stLim = "TCreg_TrPrMatch_match", tr6stKey = "Protein.IDs", pr6enLim = "TCreg_TrPrMatch_match", 
                      ph7stLim = "timeVar_fcRatio_aucRatio_proteome_match", pr7enLim = "timeVar_fcRatio_aucRatio_phosphoproteome_match", 
                      ph8stLim = "extEC4_metabolome_match", ph8stKey = "EC4", me8enLim = "EC4_phosphoproteome_match", me8enKey = "extEC4", 
                      pr9stLim = "extEC4_metabolome_match", pr9stKey = "EC4", me9enLim = "EC4_proteome_match", me9enKey = "extEC4")
+    #Create dataframe for trans-omic network
     df <- createTnetDF(mdatalist, annotCol_names_list, annotCol_names_tnet, keycols_tnet, dataTypes)
+    #Make a list of the number of molecules at each point
     sumlists <- makeSumLists(df, mdatalist, annotCol_names_list, sepGenes_vec_list, dataTypes)
-    #save images
+    #Save images
     saveImages(sumlists, arrowRelThick, dirsave)
-    #df for Excel output
+    #Save data 
     dfout <- df[, c("InterlayerEdgeID","NodeLabel_start","NodeLabel_end","OriginalName_start","OriginalName_end","DataType_start","DataType_end","OriginalName_col_start","OriginalName_col_end")]
     colnames(dfout) <- c("Edge/Node Label","EdgeStart/Node Label","EdgeEnd Label","EdgeStart/Node ID","EdgeEnd ID","EdgeStart/Node SourceDataType","EdgeEnd SourceDataType","EdgeStart/Node IDtype","EdgeEnd IDtype")
     dfout <- unique(dfout)
     dfout <- dfout[order(dfout[,1],dfout[,2],dfout[,3],dfout[,4],dfout[,5]),]
-    #Save base df
-    write.xlsx(dfout, paste0(dirsave,"/NetworkFiles/", prefix, "Tnet", suffix, ".xlsx"), col.names = TRUE, row.names = FALSE, overwrite = TRUE)#annotCols名とdisplay nameの対応など一覧表。
+    write.xlsx(dfout, paste0(dirsave,"/NetworkFiles/", prefix, "Tnet", suffix, ".xlsx"), col.names = TRUE, row.names = FALSE, overwrite = TRUE)
     
     return()
   }
@@ -61,14 +43,13 @@ generateTnet <- function(mdatalist = NULL, mdata_suffix = NULL, arrowRelThick = 
                       "annotColName_cols_start","annotColName_cols_end","annotColName_val1_start","annotColName_val2_start",
                       "annotColName_val1_end","annotColName_val2_end","rownames_start","rownames_end","VarName_start","VarName_end",
                       "NodeLabel_start","NodeLabel_end")
-    #InterlayerIDs
+    #Add edges based on one omic dataset
     df <- addEdgeData_fromOne(df, mdatalist, dataType = "phosphoproteome", startName = keycols_tnet["ph1st"], endName = annotCol_names_tnet["phosphoproteome"], limitName = NULL, InterlayerID = 1, annotCol_names_list)
     df <- addEdgeData_fromOne(df, mdatalist, dataType = "phosphoproteome", startName = annotCol_names_tnet["phosphoproteome"], endName = annotCol_names_tnet["phosphoproteome_protein"], limitName = NULL, InterlayerID = 2, annotCol_names_list)
     df <- addEdgeData_fromOne(df, mdatalist, dataType = "transcriptome", startName = keycols_tnet["tr3st"], endName = annotCol_names_tnet["transcriptome"], limitName = NULL, InterlayerID = 3, annotCol_names_list)
     df <- addEdgeData_fromOne(df, mdatalist, dataType = "transcriptome", startName = keycols_tnet["tr4st"], endName = annotCol_names_tnet["transcriptome"], limitName = NULL, InterlayerID = 4, annotCol_names_list)
     df <- addEdgeData_fromOne(df, mdatalist, dataType = "proteome", startName = keycols_tnet["pr5st"], endName = annotCol_names_tnet["proteome"], limitName = NULL, InterlayerID = 5, annotCol_names_list)
-    #InterlayerID: Limit by another column
-    #InterlayerIDs: Link based on two mdata
+    #Add edges using two omic datasets
     df <- addEdgeData_fromTwo(df, mdatalist, targetDataTypes = c("transcriptome","proteome"), 
                               startColNames = c(annotCol_names_tnet["transcriptome"], keycols_tnet["tr6stLim"], keycols_tnet["tr6stKey"]), 
                               endColNames = c(annotCol_names_tnet["proteome"], keycols_tnet["pr6enLim"], annotCol_names_tnet["proteome"]), 
@@ -85,11 +66,14 @@ generateTnet <- function(mdatalist = NULL, mdata_suffix = NULL, arrowRelThick = 
                               startColNames = c(annotCol_names_tnet["proteome"], keycols_tnet["pr9stLim"], keycols_tnet["pr9stKey"]), 
                               endColNames = c(annotCol_names_tnet["metabolome"], keycols_tnet["me9enLim"], keycols_tnet["me9enKey"]), 
                               InterlayerID = 9, annotCol_names_list)
+    #Add isolated nodes
     df <- addIsolatedNodes(df, lay = 3, mdatalist, targetdatatype = "phosphoproteome", colname = annotCol_names_tnet["phosphoproteome"], annotCol_names_list)
     df <- addIsolatedNodes(df, lay = 4, mdatalist, targetdatatype = "transcriptome", colname = annotCol_names_tnet["transcriptome"], annotCol_names_list)
     df <- addIsolatedNodes(df, lay = 5, mdatalist, targetdatatype = "proteome", colname = annotCol_names_tnet["proteome"], annotCol_names_list)
     df <- addIsolatedNodes(df, lay = 6, mdatalist, targetdatatype = "metabolome", colname = annotCol_names_tnet["metabolome"], annotCol_names_list)
+    #Add other data for graphic output
     df <- add2DdispData(df, mdatalist, annotCol_names_list, dataTypes)
+    #Arrange
     df <- df[order(df$LayerID_start, df$LayerID_end),]
     roworder <- c(seq(1:8), "8_Pho", 9, "Isolated")
     roworder <- roworder[roworder %in% unique(df$InterlayerEdgeID)]
@@ -123,13 +107,11 @@ generateTnet <- function(mdatalist = NULL, mdata_suffix = NULL, arrowRelThick = 
         tmpdf[,limitcol] <- NULL
       }
     }
-    #sep
     if(sep){
       colnames(tmpdf)[colnames(tmpdf) == targetcol] <- "targetcol"
       tmpdf <- tmpdf %>% dplyr::mutate(targetcol = strsplit(as.character(targetcol), ";")) %>% unnest(targetcol)
       colnames(tmpdf)[colnames(tmpdf) == "targetcol"] <- targetcol
     }
-    #unique
     if(unique){
       colnames(tmpdf)[colnames(tmpdf) == targetcol] <- "targetcol"
       tmpdf <- tmpdf %>%
@@ -141,6 +123,7 @@ generateTnet <- function(mdatalist = NULL, mdata_suffix = NULL, arrowRelThick = 
   }
   
   makeSumLists <- function(df, mdatalist, annotCol_names_list, sepGenes_vec_list, dataTypes){
+    #Make sumCountList (summary of molecular counts at each point) and sumIDlist (summary of molecular IDs at each point) from tnetDf
     sumCountList <- sumIDlist <- list()
     tmpElem <- list(molcount_origCol = NA, molcount_1 = NA, molcount_2 = NA)
     tmpID <- list(annotCol_names1 = NA, annotCol_names2 = NA, annotCol_names = NA)
@@ -203,7 +186,7 @@ generateTnet <- function(mdatalist = NULL, mdata_suffix = NULL, arrowRelThick = 
           ac <- ac[,unique(c("Proteins", annotCol_names_list[[1]][dataType], annotCol_names_list[[2]][dataType]))]
           ac <- ac %>% dplyr::group_by(Proteins) %>% summarise_all(funs(paste(unique(.), collapse=";")))
         }else{
-          dataType <- names(nodes)[n]#dataTypes[m]
+          dataType <- names(nodes)[n]
           ac <- annotCols(mdatalist[[which(dataTypes == dataType)]])
         }
         sumCountList[[nodename]][["molcount_origCol"]] <- nrow(ac)
@@ -292,23 +275,22 @@ generateTnet <- function(mdatalist = NULL, mdata_suffix = NULL, arrowRelThick = 
     tmpdf <- tmpdf[, c("StartNode", "EndNode", colnames(tmpdf)[!colnames(tmpdf) %in% c("StartNode", "EndNode")])]
     colnames(tmpdf)[1:2] <- c("OriginalName_start","OriginalName_end")
     tmpdf <- as.data.frame(tmpdf)
-    tmpdf$InterlayerEdgeID <- rep(InterlayerID, nrow(tmpdf))
-    tmpdf$LayerID_start <- rep(startlayerID, nrow(tmpdf))
-    tmpdf$LayerID_end <- rep(endlayerID, nrow(tmpdf))
-    tmpdf$DataType_start <- tmpdf$DataType_end <- rep(dataType, nrow(tmpdf))
-    tmpdf$OriginalName_col_start <- rep(startName, nrow(tmpdf))
-    tmpdf$OriginalName_col_end <- rep(endName, nrow(tmpdf))
-    if(nrow(tmpdf) == 0){return(df)}
+    # if(nrow(tmpdf) == 0){return(df)}
     if(is.null(limitName)){
       tmpdf$LimitCol_start <- tmpdf$LimitCol_end <- NA
     }else{
       tmpdf$LimitCol_start <- tmpdf$LimitCol_end <- rep(limitName, nrow(tmpdf))
     }
-    tmpdf$annotColName_cols_start <- tmpdf$annotColName_cols_end <- rep(paste0(annotCol_names_list[[1]][dataType],";",annotCol_names_list[[2]][dataType]), nrow(tmpdf))
     tmpdf$annotColName_val1_end <- tmpdf$annotColName_val1_start
     tmpdf$annotColName_val2_end <- tmpdf$annotColName_val2_start
-    tmpdf$VarName_start <- rep(varnameStart, nrow(tmpdf))
-    tmpdf$VarName_end <- rep(varnameEnd, nrow(tmpdf))
+    tmpdfAdd <- data.frame(InterlayerEdgeID = InterlayerID, LayerID_start = startlayerID, LayerID_end = endlayerID,
+                           DataType_start = dataType, DataType_end = dataType, OriginalName_col_start = startName, OriginalName_col_end = endName,
+                           annotColName_cols_start = paste0(annotCol_names_list[[1]][dataType],";",annotCol_names_list[[2]][dataType]),
+                           annotColName_cols_end = paste0(annotCol_names_list[[1]][dataType],";",annotCol_names_list[[2]][dataType]),
+                           VarName_start = varnameStart, VarName_end = varnameEnd, stringsAsFactors=FALSE)
+    rownames(tmpdfAdd) <- NULL
+    tmpdf <- bind_cols(tmpdf, tmpdfAdd)
+    #Order
     tmpdf <- tmpdf[,c("OriginalName_start","OriginalName_end","InterlayerEdgeID","LayerID_start","LayerID_end",
                       "DataType_start","DataType_end","OriginalName_col_start","OriginalName_col_end","LimitCol_start","LimitCol_end",
                       "annotColName_cols_start","annotColName_cols_end","annotColName_val1_start","annotColName_val2_start",
@@ -350,7 +332,7 @@ generateTnet <- function(mdatalist = NULL, mdata_suffix = NULL, arrowRelThick = 
     mdata1 <- mdatalist[which(dataTypes == targetDataTypes[1])][[1]]
     annotCols1 <- annotCols(mdata1)
     if(nrow(annotCols1) == 0){return(df)}
-    if((startColNames[2] != FALSE & !all(startColNames %in% colnames(annotCols1))) | (startColNames[2] == FALSE & !all(startColNames[c(1,3)] %in% colnames(annotCols1)))){#, dispColNames1
+    if((startColNames[2] != FALSE & !all(startColNames %in% colnames(annotCols1))) | (startColNames[2] == FALSE & !all(startColNames[c(1,3)] %in% colnames(annotCols1)))){
       return(df)
     }
     tmpdf1 <- annotCols1[, startColNames[startColNames != "FALSE"]]
@@ -376,7 +358,7 @@ generateTnet <- function(mdatalist = NULL, mdata_suffix = NULL, arrowRelThick = 
     mdata2 <- mdatalist[which(dataTypes == targetDataTypes[2])][[1]]
     annotCols2 <- annotCols(mdata2)
     if(nrow(annotCols2) == 0){return(df)}
-    if((endColNames[2] != FALSE & !all(endColNames %in% colnames(annotCols2))) | (endColNames[2] == FALSE & !all(endColNames[c(1,3)] %in% colnames(annotCols2)))){#, dispColNames2
+    if((endColNames[2] != FALSE & !all(endColNames %in% colnames(annotCols2))) | (endColNames[2] == FALSE & !all(endColNames[c(1,3)] %in% colnames(annotCols2)))){
       return(df)
     }
     tmpdf2 <- annotCols2[,unique(endColNames[endColNames != "FALSE"])]
@@ -401,24 +383,19 @@ generateTnet <- function(mdatalist = NULL, mdata_suffix = NULL, arrowRelThick = 
     tmpdf2 <- tmpdf2 %>% dplyr::mutate(key = strsplit(as.character(key), ";")) %>% unnest(key)
     if(nrow(tmpdf2) == 0){return(df)}
 
+    #Combine two node dfs based on key values to explore edges.
     tmpdf <- merge(tmpdf1, tmpdf2, by = "key", all = TRUE)
     tmpdf$key <- NULL
-    tmpdf <- tmpdf[tmpdf$OriginalName_start != "" & !is.na(tmpdf$OriginalName_start) & tmpdf$OriginalName_end != "" & !is.na(tmpdf$OriginalName_end),]# tmpdf <- tmpdf[complete.cases(tmpdf),]#両ノード全データが揃っているものに絞り込む #DisplayName_start等にしていたがノードの存在有無はoriginal~で判断すべきなので修正
-    
-    tmpdf$InterlayerEdgeID <- rep(InterlayerID, nrow(tmpdf))
-    tmpdf$LayerID_start <- rep(startlayerID, nrow(tmpdf))
-    tmpdf$LayerID_end <- rep(endlayerID, nrow(tmpdf))
-    tmpdf$DataType_start <- rep(targetDataTypes[1], nrow(tmpdf))
-    tmpdf$DataType_end <- rep(targetDataTypes[2], nrow(tmpdf))
-    tmpdf$OriginalName_col_start <- rep(startColNames[1], nrow(tmpdf))
-    tmpdf$OriginalName_col_end <- rep(endColNames[1], nrow(tmpdf))
-    tmpdf$LimitCol_start <- rep(startColNames[2], nrow(tmpdf))
-    tmpdf$LimitCol_end <- rep(endColNames[2], nrow(tmpdf))
-    tmpdf$annotColName_cols_start <- rep(paste0(annotCol_names_list[[1]][targetDataTypes[1]],";",annotCol_names_list[[2]][targetDataTypes[1]]), nrow(tmpdf))
-    tmpdf$annotColName_cols_end <- rep(paste0(annotCol_names_list[[1]][targetDataTypes[2]],";",annotCol_names_list[[2]][targetDataTypes[2]]), nrow(tmpdf))
-    tmpdf$VarName_start <- rep(varnameStart, nrow(tmpdf))
-    tmpdf$VarName_end <- rep(varnameEnd, nrow(tmpdf))
-    
+    tmpdf <- tmpdf[tmpdf$OriginalName_start != "" & !is.na(tmpdf$OriginalName_start) & tmpdf$OriginalName_end != "" & !is.na(tmpdf$OriginalName_end),]
+    tmpdfAdd <- data.frame(InterlayerEdgeID = InterlayerID, LayerID_start = startlayerID, LayerID_end=endlayerID, 
+                           DataType_start = targetDataTypes[1], DataType_end = targetDataTypes[2], 
+                           OriginalName_col_start = startColNames[1], OriginalName_col_end = endColNames[1], 
+                           LimitCol_start = startColNames[2], LimitCol_end = endColNames[2], 
+                           annotColName_cols_start = paste0(annotCol_names_list[[1]][targetDataTypes[1]],";",annotCol_names_list[[2]][targetDataTypes[1]]), 
+                           annotColName_cols_end = paste0(annotCol_names_list[[1]][targetDataTypes[2]],";",annotCol_names_list[[2]][targetDataTypes[2]]), 
+                           VarName_start = varnameStart, VarName_end = varnameEnd, stringsAsFactors=FALSE)
+    rownames(tmpdfAdd) <- NULL
+    tmpdf <- bind_cols(tmpdf, tmpdfAdd)
     tmpdf <- tmpdf[,c("OriginalName_start","OriginalName_end","InterlayerEdgeID","LayerID_start","LayerID_end","DataType_start","DataType_end",
                       "OriginalName_col_start","OriginalName_col_end","LimitCol_start","LimitCol_end",
                       "annotColName_cols_start","annotColName_cols_end","annotColName_val1_start","annotColName_val2_start",
@@ -467,7 +444,6 @@ generateTnet <- function(mdatalist = NULL, mdata_suffix = NULL, arrowRelThick = 
       df <- bind_rows(df,isonodedf)
       df <- unique(df)
     }
-    
     return(df)
   }
 
@@ -511,135 +487,10 @@ generateTnet <- function(mdatalist = NULL, mdata_suffix = NULL, arrowRelThick = 
     return(df)
   }
   
-  saveNodeCSV <- function(sumlists, mdatalist, annotCol_names_list, sepGenes_vec_list, dataTypes, dirsave){
-    nodedf <- data.frame(
-      NodeType = c("phosphoproteome","transcriptome","proteome","metabolome","proteome (NKIN child from phosphoproteome data)",
-                   "phosphoproteome NKINparent_desc","phosphoproteome NKINparent_GeneId","phosphoproteome TF","phosphoproteome TF_GeneId",
-                   "phosphoproteome miRNAname","transcriptome TF","transcriptome TF_GeneId","transcriptome miRNAname",
-                   "proteome TF","proteome TF_GeneId","proteome miRNAname","metabolome TF","metabolome TF_GeneId","metabolome miRNAname"),
-      MolCount_OrigCol = NA,
-      # MolCount_DispCol = NA,
-      annotCol_names = c(paste0(annotCol_names_list[[1]]["phosphoproteome"],";",annotCol_names_list[[2]]["phosphoproteome"]),
-                         paste0(annotCol_names_list[[1]]["transcriptome"],";",annotCol_names_list[[2]]["transcriptome"]),
-                         paste0(annotCol_names_list[[1]]["proteome"],";",annotCol_names_list[[2]]["proteome"]),
-                         paste0(annotCol_names_list[[1]]["metabolome"],";",annotCol_names_list[[2]]["metabolome"]),
-                         "Proteins","NKINparent_desc","NKINparent_GeneId","TF","TF_GeneId","miRNAname","TF","TF_GeneId","miRNAname","TF","TF_GeneId","miRNAname","TF","TF_GeneId","miRNAname"),
-      annotCol_names1 = NA, annotCol_names2 = NA
-    )
-    nodedf$annotCol_names <- gsub("NA;NA", "", nodedf$annotCol_names)
-    
-    tmp <- c(phosphoproteome = "PhoSIG2", transcriptome = "TraEXP3", proteome = "ExpEXP4", metabolome = "MetMET3")
-    for(t in seq_along(tmp)){
-      tmp2 <- tmp[t]
-      nodedf$MolCount_OrigCol[nodedf$NodeType == names(tmp2)] <- sumlists[["sumCountList"]][[tmp2]][["molcount_origCol"]]
-      nodedf$annotCol_names1[nodedf$NodeType == names(tmp2)] <- sumlists[["sumIDlist"]][[tmp2]][["annotCol_names1"]]
-      nodedf$annotCol_names2[nodedf$NodeType == names(tmp2)] <- sumlists[["sumIDlist"]][[tmp2]][["annotCol_names2"]]
-    }
-    nodedf$MolCount_OrigCol[nodedf$NodeType == "proteome (NKIN child from phosphoproteome data)"] <- sumlists[["sumCountList"]][["ExpSIG1"]][["molcount_origCol"]]
-    if(!is.na(sumlists[["sumIDlist"]][["ExpSIG1"]][["annotCol_names1"]])){
-      nodedf$annotCol_names1[nodedf$NodeType == "proteome (NKIN child from phosphoproteome data)"] <- paste(unique(unlist(strsplit(sumlists[["sumIDlist"]][["ExpSIG1"]][["annotCol_names1"]], ";"))), collapse = ";")
-    }
-    if(!is.na(sumlists[["sumIDlist"]][["ExpSIG1"]][["annotCol_names2"]])){
-      nodedf$annotCol_names2[nodedf$NodeType == "proteome (NKIN child from phosphoproteome data)"] <- paste(unique(unlist(strsplit(sumlists[["sumIDlist"]][["ExpSIG1"]][["annotCol_names2"]], ";"))), collapse = ";")
-    }
-
-    for(i in seq_along(mdatalist)){
-      mdata <- mdatalist[[i]]
-      annotCols <- annotCols(mdata)
-      dataType <- dataTypes[i]
-      if(dataType == "phosphoproteome"){
-        nkinpdesc <- unique(unlist(strsplit(as.character(annotCols$NKINparent_desc[annotCols$NKINparent_desc != ""]), ";")))
-        nkingeneid <- unique(unlist(strsplit(as.character(annotCols$NKINparent_GeneId[annotCols$NKINparent_GeneId != ""]), ";")))
-        tf <- unique(unlist(strsplit(as.character(annotCols$TF[annotCols$TF != ""]), ";")))
-        tfgeneid <- unique(unlist(strsplit(as.character(annotCols$TF_GeneId[annotCols$TF_GeneId != ""]), ";")))
-        mirna <- unique(unlist(strsplit(as.character(annotCols$miRNAname[annotCols$miRNAname != ""]), ";")))
-        nodedf$MolCount_OrigCol[6:10] <- c(nkinpdesc = length(nkinpdesc), nkingeneid = length(nkingeneid), tf = length(tf), tfgeneid = length(tfgeneid), mirna = length(mirna))
-        nodedf$annotCol_names1[6:10] <- c(nkinpdesc = paste(nkinpdesc, collapse = ";"), nkingeneid = paste(nkingeneid, collapse = ";"), tf = paste(tf, collapse = ";"), tfgeneid = paste(tfgeneid, collapse = ";"), mirna = paste(mirna, collapse = ";"))
-      }else if(dataType == "transcriptome"){
-        tf <- unique(unlist(strsplit(as.character(annotCols$TF[annotCols$TF != ""]), ";")))
-        tfgeneid <- unique(unlist(strsplit(as.character(annotCols$TF_GeneId[annotCols$TF_GeneId != ""]), ";")))
-        mirna <- unique(unlist(strsplit(as.character(annotCols$miRNAname[annotCols$miRNAname != ""]), ";")))
-        nodedf$MolCount_OrigCol[11:13] <- c(tf = length(tf), tfgeneid = length(tfgeneid), mirna = length(mirna))
-        nodedf$annotCol_names1[11:13] <- c(tf = paste(tf, collapse = ";"), tfgeneid = paste(tfgeneid, collapse = ";"), mirna = paste(mirna, collapse = ";"))
-      }else if(dataType == "proteome"){
-        tf <- unique(unlist(strsplit(as.character(annotCols$TF[annotCols$TF != ""]), ";")))
-        tfgeneid <- unique(unlist(strsplit(as.character(annotCols$TF_GeneId[annotCols$TF_GeneId != ""]), ";")))
-        mirna <- unique(unlist(strsplit(as.character(annotCols$miRNAname[annotCols$miRNAname != ""]), ";")))
-        nodedf$MolCount_OrigCol[14:16] <- c(tf = length(tf), tfgeneid = length(tfgeneid), mirna = length(mirna))
-        nodedf$annotCol_names1[14:16] <- c(tf = paste(tf, collapse = ";"), tfgeneid = paste(tfgeneid, collapse = ";"), mirna = paste(mirna, collapse = ";"))
-      }else if(dataType == "metabolome"){
-        tf <- unique(unlist(strsplit(as.character(annotCols$TF[annotCols$TF != ""]), ";")))
-        tfgeneid <- unique(unlist(strsplit(as.character(annotCols$TF_GeneId[annotCols$TF_GeneId != ""]), ";")))
-        mirna <- unique(unlist(strsplit(as.character(annotCols$miRNAname[annotCols$miRNAname != ""]), ";")))
-        nodedf$MolCount_OrigCol[17:19] <- c(tf = length(tf), tfgeneid = length(tfgeneid), mirna = length(mirna))
-        nodedf$annotCol_names1[17:19] <- c(tf = paste(tf, collapse = ";"), tfgeneid = paste(tfgeneid, collapse = ";"), mirna = paste(mirna, collapse = ";"))
-      }
-    }
-    nodedf[is.na(nodedf)] <- ""
-    write.csv(nodedf, file = paste0(dirsave, "/NetworkFiles/", prefix, "NodeInfo.csv"), row.names=FALSE)
-    
-    return()
-  }
-  
-  saveEdgeCSV <- function(sumlists, dirsave){
-    sumCountList <- sumlists[["sumCountList"]]; sumIDlist <- sumlists[["sumIDlist"]]
-    startnodes <- c("PrioSIG","PrioEXP1","PrioEXP2","PrioEXP3","PhoSIG2","PhoSIG3","TraEXP4","ExpSIG3","ExpEXP5")
-    endnodes <- c("PhoSIG1","TraEXP1","TraEXP2","ExpEXP3","ExpSIG1","ExpEXP1","ExpEXP2","MetMET1","MetMET2")
-    df <- data.frame(EdgeType = c(1,3,4,5,2,7,6,8,9),
-                     MolCount_StartNodeOrig = NA, MolCount_StartNode1 = NA, MolCount_StartNode2 = NA, MolCount_StartDispNode = NA,
-                     MolCount_EndNodeOrig = NA, MolCount_EndNode1 = NA, MolCount_EndNode2 = NA, MolCount_EndDispNode = NA,
-                     StartNode_annotColnames = NA, EndNode_annotColnames = NA,
-                     StartNodeIDs = NA, EndNodeIDs = NA,
-                     StartNodeIDs2 = NA, EndNodeIDs2 = NA
-    )
-    for(i in seq_along(startnodes)){
-      df$MolCount_StartNodeOrig[i] <- sumCountList[[startnodes[i]]][["molcount_origCol"]]
-      df$MolCount_StartNode1[i] <- sumCountList[[startnodes[i]]][["molcount_1"]]
-      df$MolCount_StartNode2[i] <- sumCountList[[startnodes[i]]][["molcount_2"]]
-      df$MolCount_StartDispNode[i] <- sumCountList[[startnodes[i]]][["molcount_dispCol"]]
-      df$MolCount_EndNodeOrig[i] <- sumCountList[[endnodes[i]]][["molcount_origCol"]]
-      df$MolCount_EndNode1[i] <- sumCountList[[endnodes[i]]][["molcount_1"]]
-      df$MolCount_EndNode2[i] <- sumCountList[[endnodes[i]]][["molcount_2"]]
-      df$MolCount_EndDispNode[i] <- sumCountList[[endnodes[i]]][["molcount_dispCol"]]
-      df$StartNode_annotColnames[i] <- sumIDlist[[startnodes[i]]][["annotCol_names"]]
-      df$EndNode_annotColnames[i] <- sumIDlist[[endnodes[i]]][["annotCol_names"]]
-      df$StartNodeIDs[i] <- sumIDlist[[startnodes[i]]][["annotCol_names1"]]
-      df$EndNodeIDs[i] <- sumIDlist[[endnodes[i]]][["annotCol_names1"]]
-      df$StartNodeIDs2[i] <- sumIDlist[[startnodes[i]]][["annotCol_names2"]]
-      df$EndNodeIDs2[i] <- sumIDlist[[endnodes[i]]][["annotCol_names2"]]
-    }
-    df$MolCount_StartNodeOrig[5] <- sumCountList[["PhoSIG2"]][["molcount_2"]]
-    df$MolCount_StartNode2[1:4] <- NA
-    df <- df[match(seq(9), df$EdgeType),]
-    rownames(df) <- NULL
-    write.csv(df, file = paste0(dirsave, "/NetworkFiles/", prefix, "EdgeInfo", suffix, ".csv"), row.names=FALSE)
-  }
-  
-  saveSumTable <- function(sumlists, dirsave){
-    sumCountList <- sumlists[["sumCountList"]]
-    sumCountList <- sumCountList[sapply(sumCountList, length) > 0]
-    nvec <- c("PrioSIG","PrioEXP1","PrioEXP2","PrioEXP3","PhoSIG1","PhoSIG2","PhoSIG3","TraEXP1","TraEXP2","TraEXP3","TraEXP4","ExpSIG1","ExpSIG2","ExpSIG3","ExpEXP1","ExpEXP2","ExpEXP3","ExpEXP4","ExpEXP5","MetMET1","MetMET2","MetMET3")
-    nvec <- nvec[!nvec %in% names(sumCountList)]
-    nvec2 <- rep(0, length(nvec))
-    names(nvec2) <- nvec
-    sumCountList <- c(sumCountList, as.list(nvec2))
-    summarytable <- data.frame(matrix(ncol = 0, nrow = 5))
-    summarytable$Layer <- c("Prior knowledge prediction", "Phosphoproteome", "Transcriptome", "Expression proteome", "Metabolome")
-    summarytable$Signaling <- c(paste0("(1) ", sumCountList[["PrioSIG"]][["molcount_origCol"]]), 
-                                paste0("(5) ",sumCountList[["PhoSIG1"]][["molcount_origCol"]], ", (6) ", sumCountList[["PhoSIG2"]][["molcount_1"]], ", (7) ", sumCountList[["PhoSIG3"]][["molcount_origCol"]]), "", 
-                                paste0("(12) ", sumCountList[["ExpSIG1"]][["molcount_origCol"]], ", (13) ", sumCountList[["ExpSIG2"]][["molcount_origCol"]], ", (14) ",sumCountList[["ExpSIG3"]][["molcount_origCol"]]), "")
-    summarytable$ExpressionRegulation <- c(paste0("(2) ", sumCountList[["PrioEXP1"]][["molcount_origCol"]], ", (3) ", sumCountList[["PrioEXP2"]][["molcount_origCol"]], ", (4) ", sumCountList[["PrioEXP3"]][["molcount_origCol"]]), "",
-                                           paste0("(8) ", sumCountList[["TraEXP1"]][["molcount_origCol"]], ", (9) ", sumCountList[["TraEXP2"]][["molcount_origCol"]], ", (10) ", sumCountList[["TraEXP3"]][["molcount_origCol"]], ", (11) ", sumCountList[["TraEXP4"]][["molcount_origCol"]]), 
-                                           paste0("(15) ", sumCountList[["ExpEXP1"]][["molcount_origCol"]], ", (16) ", sumCountList[["ExpEXP2"]][["molcount_origCol"]], ", (17) ", sumCountList[["ExpEXP3"]][["molcount_origCol"]], ", (18) ", sumCountList[["ExpEXP4"]][["molcount_origCol"]], ", (19) ", sumCountList[["ExpEXP5"]][["molcount_origCol"]]), "")
-    summarytable$MetabolicResponse <- c("", "", "", "", paste0("(20) ", sumCountList[["MetMET1"]][["molcount_origCol"]], ", (21) ", sumCountList[["MetMET2"]][["molcount_origCol"]], ", (22) ", sumCountList[["MetMET3"]][["molcount_origCol"]]))
-    summarytable[,c(2,3,4)] <- as.data.frame(sapply(summarytable[,c(2,3,4)], function(x) gsub("NA", "0", x)))
-    write.csv(summarytable, file = paste0(dirsave, "/NetworkFiles/", prefix, "summarytable", suffix, ".csv"), row.names=FALSE)
-  }
-  
   saveImages <- function(sumlists, arrowRelThick, dirsave){
     sumCountList <- sumlists[["sumCountList"]]
     thicklist <- sumCountList[names(sumCountList)]
-    thickmax <- 13000 #temp adjustment val
+    thickmax <- 13000 #Adjustment val (temp)
     th <- list()
     for(s in names(thicklist)){
       relthick <- as.numeric(thicklist[[s]][["molcount_origCol"]]) / thickmax
@@ -679,21 +530,21 @@ generateTnet <- function(mdatalist = NULL, mdata_suffix = NULL, arrowRelThick = 
   saveDiagram1 <- function(sumCountList, th, fac = 100, dirsave){
     fac <- fac/2
     colours <- c("#ffe367", "#ffc732", "#4ea24e", "#f1f132", "#aed75a", "#4a708b")
-    cairo_pdf(file = paste0(dirsave, "/NetworkFiles/", prefix, "Tnet", suffix, ".pdf"), width = 11.69/2, height = 8.27/2, family = fontfamily)
+    cairo_pdf(file = paste0(dirsave, "/NetworkFiles/", prefix, "Tnet", suffix, ".pdf"), width = 11.69/2, height = 8.27/2, family = "Arial")
     grid.newpage()
-    pushViewport(viewport(layout=grid.layout(8, 4, widths=unit(c(0.2, 1.6, 1.8, 1.8), c("inch", "inch", "inch", "inch")), 
+    pushViewport(viewport(layout=grid.layout(8, 4, widths=unit(c(0, 0.4, 1.8, 1.8), c("inch", "inch", "inch", "inch")),
                                              heights=unit(c(0.2, 0.4, 0.65, 0.65, 0.65, 0.65, 0.65, 0.2), c("inch", "inch", "inch", "inch", "inch", "inch", "inch")))))
-    ##bg
+    #BG
     for(c in seq_along(colours)){
       grid.rect(gp=gpar(fill = colours[c], lwd = NA), height=unit(0.95, "npc"), width=unit(0.99, "npc"), vp=viewport(layout.pos.col=3:4, layout.pos.row=c+1))
     }
-    grid.rect(gp=gpar(fill = "#656565", lwd = NA), y = unit(0.17, "npc"), height=unit(0.133, "npc"), width=unit(0.98, "npc"), 
-              vp=viewport(layout.pos.col=3, layout.pos.row=1))
+    grid.rect(gp=gpar(fill = "#656565", lwd = NA), y = unit(0.17, "npc"), height=unit(0.133, "npc"), width=unit(0.98, "npc"), vp=viewport(layout.pos.col=3, layout.pos.row=1))
     grid.rect(gp=gpar(fill = "#656565", lwd = NA), y = unit(0.17, "npc"), height=unit(0.133, "npc"), width=unit(0.98, "npc"), vp=viewport(layout.pos.col=4, layout.pos.row=1))#line above boxes (right; Expression regulation)
     grid.rect(gp=gpar(fill = "#656565", lwd = NA), y = unit(0.8, "npc"), height=unit(0.13, "npc"), width=unit(1, "npc"), vp=viewport(layout.pos.col=3:4, layout.pos.row=8))#line below boxes (Metabolic response)
     grid.rect(gp=gpar(fill = NA, lwd = 2, col="#656565"), height=unit(0.97, "npc"), width=unit(0.97, "npc"), vp=viewport(layout.pos.col=3, layout.pos.row=3:6))#outline of Signaling
     grid.rect(gp=gpar(fill = NA, lwd = 2, col="#656565"), height=unit(0.97, "npc"), width=unit(0.97, "npc"), vp=viewport(layout.pos.col=4, layout.pos.row=3:6))#outline of Expression regulation
     grid.rect(gp=gpar(fill = NA, lwd = 2, col="#656565"), height=unit(0.97, "npc"), width=unit(0.99, "npc"), vp=viewport(layout.pos.col=3:4, layout.pos.row=7))#outline of Metabolic response
+    #BG Text
     grid.text("Phos-mediated signaling",
               y = unit(0.6, "npc"), 
               gp = gpar(fontsize = 9, fontface = "bold.italic", col = "black"), 
@@ -706,22 +557,26 @@ generateTnet <- function(mdatalist = NULL, mdata_suffix = NULL, arrowRelThick = 
               y = unit(0.4, "npc"), 
               gp = gpar(fontsize = 9, fontface = "bold.italic", col = "black", lineheight = 0.9), 
               vp = viewport(layout.pos.col = 3:4, layout.pos.row = 8))
-    #left column
-    grid.text("Input", gp = gpar(fontsize = 8, col = "black"), vp = viewport(layout.pos.col=2, layout.pos.row=2))
+    #Left column
+    grid.text("Input", gp = gpar(fontsize = 8, col = "black"), 
+              vp = viewport(layout.pos.col=1.95, layout.pos.row=2))
     grid.text("Effector",
               gp = gpar(fontsize = 8, col = "black", lineheight = 0.9), 
-              vp = viewport(layout.pos.col = 2, layout.pos.row = 3))
+              vp = viewport(layout.pos.col = 1.95, layout.pos.row = 3))
     grid.text("Ph-ome",
               y = unit(0.65, "npc"), gp = gpar(fontsize = 8, col = "black"), 
-              vp = viewport(layout.pos.col = 2, layout.pos.row = 4))
+              vp = viewport(layout.pos.col = 1.95, layout.pos.row = 4))
     grid.text("Tr-ome",
-              y = unit(0.65, "npc"), gp = gpar(fontsize = 8, col = "black"), vp=viewport(layout.pos.col=2, layout.pos.row=5))
+              y = unit(0.65, "npc"), gp = gpar(fontsize = 8, col = "black"), 
+              vp=viewport(layout.pos.col=1.95, layout.pos.row=5))
     grid.text("Pr-ome",
-              y = unit(0.6, "npc"), gp = gpar(fontsize = 8, col = "black"), vp=viewport(layout.pos.col=2, layout.pos.row=6))
+              y = unit(0.6, "npc"), gp = gpar(fontsize = 8, col = "black"), 
+              vp=viewport(layout.pos.col=1.95, layout.pos.row=6))
     grid.text("Met-ome",
-              y = unit(0.6, "npc"), gp = gpar(fontsize = 8, col = "black"), vp=viewport(layout.pos.col=2, layout.pos.row=7))
-    #flow chart
-    grid.text("Blood insulin \nlevel", #tnetParam[["inputTxt"]]
+              y = unit(0.6, "npc"), gp = gpar(fontsize = 8, col = "black"), 
+              vp=viewport(layout.pos.col=1.95, layout.pos.row=7))
+    #Flow chart
+    grid.text("Blood insulin \nlevel",
               gp = gpar(fontsize = 7, col = "black", lineheight = 0.9), 
               vp = viewport(layout.pos.col = 3:4, layout.pos.row = 2))
     grid.text("Kin/Pase/Pdoms",
@@ -744,7 +599,7 @@ generateTnet <- function(mdatalist = NULL, mdata_suffix = NULL, arrowRelThick = 
                 vp = viewport(layout.pos.col = 4, layout.pos.row = 3))
     }
     grid.text("miRNAs", 
-              x = unit(0.7, "npc"), #y = unit(0.6, "npc"), 
+              x = unit(0.7, "npc"),
               gp = gpar(fontsize = 7, col = "black"), 
               vp = viewport(layout.pos.col = 4, layout.pos.row = 3))
     if(!is.na(sumCountList[["PrioEXP2"]][["molcount_origCol"]]) & sumCountList[["PrioEXP2"]][["molcount_origCol"]] != 0){
@@ -758,7 +613,6 @@ generateTnet <- function(mdatalist = NULL, mdata_suffix = NULL, arrowRelThick = 
     }
     if(!is.na(sumCountList[["PhoSIG2"]][["molcount_1"]]) & sumCountList[["PhoSIG2"]][["molcount_1"]] != 0){
       grid.text(paste0(sumCountList[["PhoSIG2"]][["molcount_1"]], " Phos-sites"),
-                #y = unit(0.45, "npc"), 
                 gp = gpar(fontsize = 7, col = "black", lineheight = 0.9), 
                 vp = viewport(layout.pos.col = 3, layout.pos.row = 4))
     }
@@ -769,7 +623,7 @@ generateTnet <- function(mdatalist = NULL, mdata_suffix = NULL, arrowRelThick = 
       grid.text(sumCountList[["TraEXP1"]][["molcount_origCol"]], x = unit(0.2, "npc"), y = unit(0.85, "npc"), gp = gpar(fontsize = 5, col = "black"), vp=viewport(layout.pos.col=4, layout.pos.row=5))
     }
     if(!is.na(sumCountList[["TraEXP2"]][["molcount_origCol"]]) & sumCountList[["TraEXP2"]][["molcount_origCol"]] != 0){
-      if(th["TraEXP2"] > 0.05){#太いときは文字をやや左にずらす
+      if(th["TraEXP2"] > 0.05){#When the arrow is too wide, move the text slightly to the left. 
         grid.text(sumCountList[["TraEXP2"]][["molcount_origCol"]], x = unit(0.47, "npc"), y = unit(0.85, "npc"), gp = gpar(fontsize = 5, col = "black"), vp=viewport(layout.pos.col=4, layout.pos.row=5))
       }else{
         grid.text(sumCountList[["TraEXP2"]][["molcount_origCol"]], x = unit(0.54, "npc"), y = unit(0.85, "npc"), gp = gpar(fontsize = 5, col = "black"), vp=viewport(layout.pos.col=4, layout.pos.row=5))
@@ -847,44 +701,44 @@ generateTnet <- function(mdatalist = NULL, mdata_suffix = NULL, arrowRelThick = 
     if(!is.na(sumCountList[["PhoSIG3"]][["molcount_origCol"]]) & sumCountList[["PhoSIG3"]][["molcount_origCol"]] != 0 && !is.na(sumCountList[["ExpEXP1"]][["molcount_origCol"]]) & sumCountList[["ExpEXP1"]][["molcount_origCol"]] != 0){
       drawArrowsSlanted(th_start = th[["PhoSIG3"]], th_end = th[["ExpEXP1"]], 
                         rellen = 0.45, angle = 55,
-                        vp = viewport(x = unit(3.9, "inch"), y = unit(1.75, "inch")), fac = fac)
+                        vp = viewport(x = unit(3.2, "inch"), y = unit(1.75, "inch")), fac = fac)
     }
     if(!is.na(sumCountList[["ExpSIG3"]][["molcount_origCol"]]) & sumCountList[["ExpSIG3"]][["molcount_origCol"]] != 0 && !is.na(sumCountList[["MetMET1"]][["molcount_origCol"]]) & sumCountList[["MetMET1"]][["molcount_origCol"]] != 0){
       drawArrowsSlanted(th_start = th[["ExpSIG3"]], th_end = th[["MetMET1"]], 
                         rellen = 0.16, angle = 43,
-                        vp = viewport(x = unit(3.4, "inch"), y = unit(0.88, "inch")), fac = fac)
+                        vp = viewport(x = unit(2.7, "inch"), y = unit(0.88, "inch")), fac = fac)
     }
     if(!is.na(sumCountList[["ExpEXP5"]][["molcount_origCol"]]) & sumCountList[["ExpEXP5"]][["molcount_origCol"]] != 0 && !is.na(sumCountList[["MetMET2"]][["molcount_origCol"]]) & sumCountList[["MetMET2"]][["molcount_origCol"]] != 0){
       drawArrowsSlanted(th_start = th[["ExpEXP5"]], th_end = th[["MetMET2"]], 
                         rellen = 0.25, angle = -62,
-                        vp = viewport(x = unit(4.5, "inch"), y = unit(0.88, "inch")), fac = fac)
+                        vp = viewport(x = unit(3.7, "inch"), y = unit(0.88, "inch")), fac = fac)
     }
-    #dotted arrows
-    grid.lines(x = unit(c(3.86, 2.9), "inch"), 
+    #Dotted arrows
+    grid.lines(x = unit(c(3.1, 2.1), "inch"),
                y = unit(c(3.55, 3.3), "inch"), 
                gp = gpar(fill="black", lty=2),
                arrow = arrow(length = unit(0.07, "inch"), ends="last", type="closed"))
-    grid.lines(x = unit(c(3.86, 4.35), "inch"), 
-               y = unit(c(3.55, 3.3), "inch"), #3.35
+    grid.lines(x = unit(c(3.1, 3.55), "inch"),
+               y = unit(c(3.55, 3.3), "inch"),
                gp = gpar(fill="black", lty=2),
                arrow = arrow(length = unit(0.07, "inch"), ends="last", type="closed"))
-    grid.lines(x = unit(c(3.86, 5), "inch"), 
-               y = unit(c(3.55, 3.3), "inch"), #3.35
+    grid.lines(x = unit(c(3.1, 4.2), "inch"),
+               y = unit(c(3.55, 3.3), "inch"),
                gp = gpar(fill="black", lty=2),
                arrow = arrow(length = unit(0.07, "inch"), ends="last", type="closed"))
     dev.off()
     
   }
   
-  saveDiagram2 <- function(sumCountList, th, fac = 100, dirsave){#
+  saveDiagram2 <- function(sumCountList, th, fac = 100, dirsave){
     fac <- fac/20
     colours <- c("#ffc732", "#6ec26e", "#f2f252", "#cef77a", "#6a90ab")
     fontsizeNorm <- 4
     fontsizeLarge <- 7
-    cairo_pdf(file = paste0(dirsave, "/NetworkFiles/", prefix, "Tnet_simple", suffix, ".pdf"), width = 8.27/6, height = 11.69/4, family = fontfamily)
+    cairo_pdf(file = paste0(dirsave, "/NetworkFiles/", prefix, "Tnet_lite", suffix, ".pdf"), width = 8.27/6, height = 11.69/4, family = "Arial")
     drawDiagram3(sumCountList, th, fac, colours, fontsizeNorm, fontsizeLarge)
     dev.off()
-   
+    
     return()
   }
   
@@ -892,7 +746,7 @@ generateTnet <- function(mdatalist = NULL, mdata_suffix = NULL, arrowRelThick = 
     grid.newpage()
     pushViewport(viewport(layout=grid.layout(16, 1, widths=unit(1, "npc"), 
                                              heights=unit(c(0.065, 0.065, 0.065, 0.045, 0.065, 0.065, 0.045, 0.065, 0.065, 0.045, 0.065, 0.065, 0.045, 0.065, 0.065, 0.065), rep("npc", 11)))))
-    #bg
+    #BG
     grid.rect(gp=gpar(fill = "#656565", lwd = NA), x = unit(0.36, "npc"), y = unit(0.2, "npc"), height=unit(0.2, "npc"), width=unit(0.41, "npc"), vp=viewport(layout.pos.col=1, layout.pos.row=1))
     grid.rect(gp=gpar(fill = "#656565", lwd = NA), x = unit(0.785, "npc"), y = unit(0.2, "npc"), height=unit(0.2, "npc"), width=unit(0.41, "npc"), vp=viewport(layout.pos.col=1, layout.pos.row=1))
     grid.rect(gp=gpar(fill = "#656565", lwd = NA), x = unit(0.427, "npc"), y = unit(0.82, "npc"), height=unit(0.2, "npc"), width=unit(0.845, "npc"), vp=viewport(layout.pos.col=1, layout.pos.row=16))
@@ -905,28 +759,27 @@ generateTnet <- function(mdatalist = NULL, mdata_suffix = NULL, arrowRelThick = 
       grid.polygon(x=c(0.15, 0, 0.85, 1), y=c(1, 0, 0, 1), default.units="npc", 
                    gp=gpar(fill=colours[c], lwd = NA), vp = viewport(layout.pos.col = 1, layout.pos.row = ((c-1)*3+2):((c-1)*3+3)))
     }
-    #arrows
+    #Arrows
     if(!is.na(sumCountList[["PrioSIG"]][["molcount_origCol"]]) & sumCountList[["PrioSIG"]][["molcount_origCol"]] != 0 && !is.na(sumCountList[["PhoSIG1"]][["molcount_origCol"]]) & sumCountList[["PhoSIG1"]][["molcount_origCol"]] != 0){
-      drawArrowsStraightNPC(poscols = 1, posrows = 4:5, rellen = 1, center = c(0.3, 0.5), th_start = th[["PrioSIG"]]*0.7, th_end = th[["PhoSIG1"]]*0.7, fac = fac)# g1_5
+      drawArrowsStraightNPC(poscols = 1, posrows = 4:5, rellen = 1, center = c(0.3, 0.5), th_start = th[["PrioSIG"]]*0.7, th_end = th[["PhoSIG1"]]*0.7, fac = fac)
     }
     if(!is.na(sumCountList[["PrioEXP1"]][["molcount_origCol"]]) & sumCountList[["PrioEXP1"]][["molcount_origCol"]] != 0 && !is.na(sumCountList[["TraEXP1"]][["molcount_origCol"]]) & sumCountList[["TraEXP1"]][["molcount_origCol"]] != 0){
-      drawArrowsStraightNPC(poscols = 1, posrows = 4:8, rellen = 1, center = c(0.62, 0.5), th_start = th[["PrioEXP1"]]*0.7, th_end = th[["TraEXP1"]]*0.7, fac = fac)# g2_8
+      drawArrowsStraightNPC(poscols = 1, posrows = 4:8, rellen = 1, center = c(0.62, 0.5), th_start = th[["PrioEXP1"]]*0.7, th_end = th[["TraEXP1"]]*0.7, fac = fac)
     }
     if(!is.na(sumCountList[["PrioEXP2"]][["molcount_origCol"]]) & sumCountList[["PrioEXP2"]][["molcount_origCol"]] != 0 && !is.na(sumCountList[["TraEXP2"]][["molcount_origCol"]]) & sumCountList[["TraEXP2"]][["molcount_origCol"]] != 0){
-      drawArrowsStraightNPC(poscols = 1, posrows = 4:8, rellen = 1, center = c(0.73, 0.5), th_start = th[["PrioEXP2"]]*0.7, th_end = th[["TraEXP2"]]*0.7, fac = fac)# g3_9
+      drawArrowsStraightNPC(poscols = 1, posrows = 4:8, rellen = 1, center = c(0.73, 0.5), th_start = th[["PrioEXP2"]]*0.7, th_end = th[["TraEXP2"]]*0.7, fac = fac)
     }
     if(!is.na(sumCountList[["PrioEXP3"]][["molcount_origCol"]]) & sumCountList[["PrioEXP3"]][["molcount_origCol"]] != 0 && !is.na(sumCountList[["ExpEXP3"]][["molcount_origCol"]]) & sumCountList[["ExpEXP3"]][["molcount_origCol"]] != 0){
-      drawArrowsStraightNPC(poscols = 1, posrows = 4:11, rellen = 1, center = c(0.84, 0.5), th_start = th[["PrioEXP3"]]*0.7, th_end = th[["ExpEXP3"]]*0.7, fac = fac)# g4_17
+      drawArrowsStraightNPC(poscols = 1, posrows = 4:11, rellen = 1, center = c(0.84, 0.5), th_start = th[["PrioEXP3"]]*0.7, th_end = th[["ExpEXP3"]]*0.7, fac = fac)
     }
     if(!is.na(sumCountList[["PhoSIG2"]][["molcount_2"]]) & sumCountList[["PhoSIG2"]][["molcount_2"]] != 0 && !is.na(sumCountList[["ExpSIG1"]][["molcount_origCol"]]) & sumCountList[["ExpSIG1"]][["molcount_origCol"]] != 0){
-      #↑PhoSIG2のみmolcount_2なのは、phosphoのうちProteins（annotCol_namesの[[2]]）に値のある全分子数とするため。"molcount_origCol"の場合は単純なrow数。
-      drawArrowsStraightNPC(poscols = 1, posrows = 7:11, rellen = 1, center = c(0.2, 0.5), th_start = th[["PhoSIG2"]]*0.7, th_end = th[["ExpSIG1"]]*0.7, fac = fac)# g6_12
+      drawArrowsStraightNPC(poscols = 1, posrows = 7:11, rellen = 1, center = c(0.2, 0.5), th_start = th[["PhoSIG2"]]*0.7, th_end = th[["ExpSIG1"]]*0.7, fac = fac)
     }
     if(!is.na(sumCountList[["PhoSIG3"]][["molcount_origCol"]]) & sumCountList[["PhoSIG3"]][["molcount_origCol"]] != 0 && !is.na(sumCountList[["ExpEXP1"]][["molcount_origCol"]]) & sumCountList[["ExpEXP1"]][["molcount_origCol"]] != 0){
       drawArrowsSlanted(th_start = th[["PhoSIG3"]]*0.7, th_end = th[["ExpEXP1"]]*0.7, rellen = 0.21, angle = 20, vp = viewport(x = unit(-0.85, "npc"), y = unit(0.01, "npc")), fac = fac*4)
     }
     if(!is.na(sumCountList[["TraEXP4"]][["molcount_origCol"]]) & sumCountList[["TraEXP4"]][["molcount_origCol"]] != 0 && !is.na(sumCountList[["ExpEXP2"]][["molcount_origCol"]]) & sumCountList[["ExpEXP2"]][["molcount_origCol"]] != 0){
-      drawArrowsStraightNPC(poscols = 1, posrows = 10:11, rellen = 1, center = c(0.675, 0.5), th_start = th[["TraEXP4"]]*0.7, th_end = th[["ExpEXP2"]]*0.7, fac = fac)# g11_16
+      drawArrowsStraightNPC(poscols = 1, posrows = 10:11, rellen = 1, center = c(0.675, 0.5), th_start = th[["TraEXP4"]]*0.7, th_end = th[["ExpEXP2"]]*0.7, fac = fac)
     }
     if(!is.na(sumCountList[["ExpSIG3"]][["molcount_origCol"]]) & sumCountList[["ExpSIG3"]][["molcount_origCol"]] != 0 && !is.na(sumCountList[["MetMET1"]][["molcount_origCol"]]) & sumCountList[["MetMET1"]][["molcount_origCol"]] != 0){
       drawArrowsSlanted(th_start = th[["ExpSIG3"]]*0.7, th_end = th[["MetMET1"]]*0.7, rellen = 0.1, angle = 33, vp = viewport(x = unit(-0.74, "npc"), y = unit(-0.39, "npc")), fac = fac*4)
@@ -1014,7 +867,7 @@ generateTnet <- function(mdatalist = NULL, mdata_suffix = NULL, arrowRelThick = 
     fac <- fac/2
     zoom <- 0.5
     
-    #inch
+    #Set in inch
     if(is.null(center)){
       rown <- length(posrows)
       centx <- 1.6*zoom; centy <- 0.7*zoom*rown
@@ -1035,7 +888,6 @@ generateTnet <- function(mdatalist = NULL, mdata_suffix = NULL, arrowRelThick = 
     centx <- center[1]
     centy <- center[2]
     pushViewport(viewport(layout.pos.col = poscols, layout.pos.row = posrows))
-    #鋭め
     grid.polygon(x=c(centx-th_start*1*fac, centx-th_end*1*fac, centx-(0.01+th_end*2*fac), centx, centx+(0.01+th_end*2*fac), centx+th_end*1*fac, centx+th_start*1*fac, centx-th_start*1*fac),
                  y=c(centy*(1+rellen), centy*(1-rellen)+0.05+th_end*0.3, centy*(1-rellen)+0.07+th_end*0.3, centy*(1-rellen), centy*(1-rellen)+0.07+th_end*0.3, centy*(1-rellen)+0.05+th_end*0.3, centy*(1+rellen), centy*(1+rellen)),
                  default.units="npc", gp=gpar(fill="black"))
@@ -1046,8 +898,7 @@ generateTnet <- function(mdatalist = NULL, mdata_suffix = NULL, arrowRelThick = 
     pushViewport(vp)
     fac <- fac/2
     
-    #inch
-    #A4: width = 11.69, height = 8.27
+    #Set in inch (A4: width = 11.69, height = 8.27)
     centx <- 5.845/2; centy <- 4.135/2
     grid.polygon(x=c(centx-th_start*fac/2, centx-th_end*fac/2, centx-th_end*fac/2-(0.03+th_end/2*fac), centx, 
                      centx+th_end*fac/2+(0.03+th_end/2*fac), centx+th_end*fac/2, centx+th_start*fac/2),
@@ -1059,11 +910,8 @@ generateTnet <- function(mdatalist = NULL, mdata_suffix = NULL, arrowRelThick = 
   }
   
   dir.create(paste0(dirsave, "/NetworkFiles"), showWarnings = FALSE)
-  #read data
-  if(is.null(mdatalist)){
-    mdatalist <- base::get(load(paste0(dirsave, "/MdataFiles/mdata", mdata_suffix, "_list")))
-  }
-  mainFun(mdatalist, mdata_suffix, arrowRelThick, dirsave, prefix, suffix)
+  mdatalist <- base::get(load(paste0(dirsave, "/MdataFiles/mdata", mdata_suffix, "_list")))
+  mainFun(mdatalist, mdata_suffix, arrowRelThick, dirsave, prefix, suffix, settings)
   
   return()
 }

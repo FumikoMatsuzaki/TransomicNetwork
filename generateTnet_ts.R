@@ -1,25 +1,24 @@
-generateTnet_ts <- function(mdata_suffix, arrowRelThick = c(100, 100), dirsave, prefix = NULL, suffix = NULL){
-
+generateTnet_ts <- function(arrowRelThick = c(100, 100), dirsave, prefix = NULL, settings){
+  #Generate a time series of trans-omics network using subsets of multi-omic datasets extracted at each time point.
+  
   source("./generateTnet.R")
   
-  exeGenerateTnet <- function(mdatalist, compTimeUnits, arrowRelThick, dirsave, prefix, suffix){
+  exeGenerateTnet <- function(compTimeUnits, arrowRelThick, dirsave, prefix, settings){
     for(compTimeUnit in compTimeUnits){
-      mdata_suffix_extracted <- paste0("_", sub("Insulin_compTP_maxmin2_TimeUnit_", "time", compTimeUnit))
-      mdatalist2 <- base::get(load(paste0(dirsave, "/MdataFiles/mdata", mdata_suffix_extracted, "_list")))
-      generateTnet(mdatalist2,
-                mdata_suffix = mdata_suffix_extracted,
-                arrowRelThick = arrowRelThick,
-                dirsave = dirsave,
-                prefix = prefix,
-                suffix = mdata_suffix_extracted)
+      mdata_suffix_extracted <- paste0("_", compTimeUnit)
+      generateTnet(mdata_suffix = mdata_suffix_extracted,
+                   arrowRelThick = arrowRelThick,
+                   dirsave = dirsave,
+                   prefix = prefix,
+                   suffix = mdata_suffix_extracted,
+                   settings = settings)
     }
     return()
   }
   
-  #read data
   mdatalist <- base::get(load(paste0(dirsave, "/MdataFiles/mdata_ir_list")))
-  compTimeUnits <- colnames(annotCols(mdatalist[[1]])[grepl(paste0("Insulin_compTP_maxmin2_TimeUnit_"), colnames(annotCols(mdatalist[[1]])))])
-  exeGenerateTnet(mdatalist, compTimeUnits, arrowRelThick, dirsave, prefix, suffix)
+  compTimeUnits <- colnames(annotCols(mdatalist[[1]])[grepl("^Time_\\d+$", colnames(annotCols(mdatalist[[1]])))])
+  exeGenerateTnet(compTimeUnits, arrowRelThick, dirsave, prefix, settings)
   
   return()
 }
